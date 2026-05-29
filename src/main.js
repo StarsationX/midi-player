@@ -57,6 +57,34 @@ function probePython(exe, prefixArgs) {
 async function startPython() {
   if (py) return;
   const enginePath = pythonEnginePath();
+
+  // Prefer the PyInstaller-bundled engine if it ships alongside the app
+  // (portable / installer build). This makes the app truly zero-install
+  // for end users — no Python on PATH required.
+  const bundledExe = path.join(enginePath,
+    process.platform === 'win32' ? 'ipc_main.exe' : 'ipc_main');
+  if (fs.existsSync(bundledExe)) {
+    let child;
+    try {
+      child = spawn(bundledExe, [], {
+        cwd: enginePath,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        windowsHide: true,
+      });
+    } catch (e) {
+      pyLastError = `Failed to launch bundled engine: ${e.message}`;
+      sendToRenderer('engine-error', pyLastError);
+      return;
+    }
+    child.once('spawn', () => bindPython(child, path.basename(bundledExe), []));
+    child.once('error', (err) => {
+      pyLastError = `Bundled engine errored: ${err.message}`;
+      sendToRenderer('engine-error', pyLastError);
+    });
+    return;
+  }
+
   const script = path.join(enginePath, 'ipc_main.py');
   if (!fs.existsSync(script)) {
     sendToRenderer('engine-error', `ipc_main.py not found at ${script}`);

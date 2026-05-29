@@ -5,8 +5,10 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
+    "build-engine": "build-portable.bat",
     "build": "electron-builder",
-    "build:win": "electron-builder --win"
+    "build:win": "electron-builder --win",
+    "build:portable": "build-portable.bat && electron-builder --win --x64 -c.win.target=portable"
   },
   "author": "",
   "license": "MIT",

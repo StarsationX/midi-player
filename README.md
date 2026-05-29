@@ -10,13 +10,15 @@ Built as an Electron front-end with a Python sidecar for the keypress engine.
 
 - **Drag-and-drop**: drop a `.mid` / `.midi` file anywhere on the window to load it; drop a `.json` to load a custom mapping.
 - **Built-in visualizer**: piano-roll + virtual keyboard, smoothly tweened to the song's tempo (no teleporting between updates).
+- **YouTube-style scrubber**: click, drag, or use ←/→/Home/End on the progress bar to seek anywhere in the track — even mid-playback.
 - **Pause / Resume**: F8 by default, or click the on-screen button.
 - **Global hotkeys**: Play (F6), Stop (F7), Pause (F8) — work even when the game has focus.
 - **Auto-pause on focus loss**: if you tab out of the target window, playback freezes; tab back in to resume.
-- **Tempo control** (0.25× – 3×) and start countdown.
+- **Tempo control** (0.25× – 3×) and optional pre-roll countdown (disabled by default).
 - **Timing stats**: per-note error histogram for tuning.
 - **High-resolution timing on Windows**: `timeBeginPeriod(1)`, thread-priority boost, GC disabled during playback, hybrid sleep + 3 ms busy-wait spin.
 - **Multiple mapping presets** for the popular layouts (see below).
+- **Portable build**: PyInstaller bundles the Python sidecar into a single `.exe` so end users don't need Python installed — see [Build a portable .exe](#build-a-portable-exe).
 
 ## Mapping presets
 

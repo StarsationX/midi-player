@@ -40,3 +40,9 @@ desktop.ini
 # could write them to disk. Keep that out.
 *.log
 .cache/
+
+# PyInstaller artifacts — built by build-portable.bat
+python-engine/ipc_main.exe
+python-engine/build/
+python-engine/dist/
+python-engine/*.spec.bak
