@@ -221,7 +221,6 @@ window.api.onEngineEvent((evt) => {
       bpm = evt.bpm;
       viz.startClock(evt.duration);
       setStatus('playing', 'Playing');
-      log('info', '=== Playing ===');
       updateTrackStrip();
       break;
 
@@ -242,7 +241,6 @@ window.api.onEngineEvent((evt) => {
       setPauseButton(false);
       viz.stopClock();
       setStatus('idle', 'Idle');
-      log('info', '=== Done ===');
       if (evt.stats) {
         const s = evt.stats;
         log('info',
