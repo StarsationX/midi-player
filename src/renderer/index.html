@@ -43,12 +43,22 @@
               <button id="midi-browse" class="btn btn-icon" title="Browse">…</button>
             </div>
           </div>
+          <div class="field" id="recent-field" style="display:none">
+            <label>Recent</label>
+            <div class="file-row">
+              <select id="recent-select"><option value="">— recent files —</option></select>
+              <button id="recent-clear" class="btn btn-icon" title="Clear recent files">✕</button>
+            </div>
+          </div>
           <div class="field">
             <label>Target window</label>
             <div class="file-row">
               <select id="target-select"><option value="">— refresh to populate —</option></select>
               <button id="target-refresh" class="btn btn-icon" title="Refresh">↻</button>
             </div>
+            <label class="check" style="margin-top:8px">
+              <input id="auto-pick-target" type="checkbox"/> Auto-select last target on launch
+            </label>
           </div>
           <div class="field">
             <label>Mapping</label>

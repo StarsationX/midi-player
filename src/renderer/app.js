@@ -7,8 +7,12 @@ const els = {
   // sidebar — source
   midiPath: $('midi-path'),
   midiBrowse: $('midi-browse'),
+  recentField: $('recent-field'),
+  recentSelect: $('recent-select'),
+  recentClear: $('recent-clear'),
   targetSelect: $('target-select'),
   targetRefresh: $('target-refresh'),
+  autoPickTarget: $('auto-pick-target'),
   mappingSelect: $('mapping-select'),
   mappingBrowse: $('mapping-browse'),
   // sidebar — playback
@@ -65,7 +69,11 @@ const settings = Object.assign({
   targetHint: '',
   openSection: 'source',
   logCollapsed: true,
+  recentFiles: [],          // most-recent-first list of MIDI paths
+  autoPickTarget: true,     // auto-select the remembered target on launch
 }, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
+
+const MAX_RECENTS = 8;
 
 function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -118,6 +126,7 @@ function applySettingsToUI() {
   els.hkPlay.value = settings.playHotkey;
   els.hkStop.value = settings.stopHotkey;
   els.hkPause.value = settings.pauseHotkey;
+  els.autoPickTarget.checked = settings.autoPickTarget !== false;
 
   // Open the persisted section
   document.querySelectorAll('.section').forEach((sec) => {
@@ -126,6 +135,9 @@ function applySettingsToUI() {
 
   // Log collapse state
   els.logPanel.classList.toggle('is-collapsed', !!settings.logCollapsed);
+
+  // Recent files dropdown
+  renderRecents();
 
   // If a previous MIDI was loaded, restore the track-strip placeholder.
   if (settings.midiPath) {
@@ -349,10 +361,21 @@ function updateTrackStrip() {
 els.midiBrowse.addEventListener('click', async () => {
   const p = await window.api.pickMidi();
   if (!p) return;
-  els.midiPath.value = p;
-  settings.midiPath = p;
+  setMidiFile(p);
+});
+
+els.recentSelect.addEventListener('change', () => {
+  const p = els.recentSelect.value;
+  if (p) setMidiFile(p);
+});
+els.recentClear.addEventListener('click', () => {
+  settings.recentFiles = [];
   saveSettings();
-  loadMidi();
+  renderRecents();
+});
+els.autoPickTarget.addEventListener('change', () => {
+  settings.autoPickTarget = els.autoPickTarget.checked;
+  saveSettings();
 });
 
 els.targetRefresh.addEventListener('click', () => requestWindows());
@@ -452,12 +475,44 @@ function loadMidi() {
   const p = els.midiPath.value;
   if (!p) return;
   lastMidiPath = p;
+  pushRecent(p);
   window.api.send({
     cmd: 'load_midi',
     path: p,
     mapping: resolveMappingArg(),
     tempo: parseFloat(els.tempo.value),
   });
+}
+
+// Set the MIDI file from any source (browse / recents / drop) and load it.
+function setMidiFile(p) {
+  els.midiPath.value = p;
+  settings.midiPath = p;
+  saveSettings();
+  loadMidi();
+}
+
+// Recent files — most-recent-first, de-duplicated, capped.
+function pushRecent(p) {
+  if (!p) return;
+  const list = (settings.recentFiles || []).filter(x => x !== p);
+  list.unshift(p);
+  settings.recentFiles = list.slice(0, MAX_RECENTS);
+  saveSettings();
+  renderRecents();
+}
+
+function renderRecents() {
+  const list = settings.recentFiles || [];
+  els.recentField.style.display = list.length ? '' : 'none';
+  els.recentSelect.innerHTML = '<option value="">— recent files —</option>';
+  for (const p of list) {
+    const o = document.createElement('option');
+    o.value = p;
+    o.textContent = p.split(/[\\/]/).pop();
+    o.title = p;
+    els.recentSelect.appendChild(o);
+  }
 }
 
 function selectedTarget() {
@@ -543,7 +598,7 @@ function populateWindows() {
     const proc = (w.process || '?').padEnd(28).slice(0, 28);
     o.textContent = `${proc} | ${w.title}`;
     els.targetSelect.appendChild(o);
-    if (settings.targetHint &&
+    if (settings.autoPickTarget !== false && settings.targetHint &&
         ((w.process || '') + ' ' + (w.title || ''))
         .toLowerCase()
         .includes(settings.targetHint.toLowerCase())) {
@@ -669,11 +724,8 @@ window.addEventListener('drop', (e) => {
   const midi = paths.find(p => /\.midi?$/i.test(p));
   const json = paths.find(p => /\.json$/i.test(p));
   if (midi) {
-    els.midiPath.value = midi;
-    settings.midiPath = midi;
-    saveSettings();
     log('info', `Dropped MIDI: ${midi.split(/[\\/]/).pop()}`);
-    loadMidi();
+    setMidiFile(midi);
   } else if (json) {
     settings.customMappingPath = json;
     settings.mapping = '__custom__';
