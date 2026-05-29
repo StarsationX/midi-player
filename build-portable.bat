@@ -64,6 +64,11 @@ echo Next steps:
 echo   - npm start              run the app with the bundled sidecar
 echo   - npm run build:portable build a single portable .exe (NSIS-free)
 echo ============================================================
+REM Only pause when run interactively (double-clicked). Skip when chained
+REM from `npm run build:portable` etc. — npm's stdin isn't a tty.
+if defined NPM_CONFIG_USER_AGENT goto :eof
+if /i "%~1"=="--no-pause" goto :eof
+echo.
 pause
 exit /b 0
 

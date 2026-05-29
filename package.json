@@ -5,11 +5,11 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build-engine": "build-portable.bat",
+    "build-engine": "call build-portable.bat",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
-    "build:portable": "build-portable.bat && electron-builder --win --x64 -c.win.target=dir && electron-builder --prepackaged dist/win-unpacked --win --x64 -c.win.target=portable",
-    "build:zip": "build-portable.bat && electron-builder --win --x64 -c.win.target=dir && powershell -NoProfile -Command \"$z='dist/MIDI-Player-portable.zip'; if (Test-Path $z) { Remove-Item $z -Force }; Compress-Archive -Path dist/win-unpacked/* -DestinationPath $z -CompressionLevel Optimal; $i = Get-Item $z; Write-Host ('Created ' + $i.FullName + ' (' + [math]::Round($i.Length/1MB,1) + ' MB)')\""
+    "build:portable": "call build-portable.bat && electron-builder --win --x64 -c.win.target=dir && electron-builder --prepackaged dist/win-unpacked --win --x64 -c.win.target=portable",
+    "build:zip": "call build-portable.bat && electron-builder --win --x64 -c.win.target=dir && powershell -NoProfile -Command \"$z='dist/MIDI-Player-portable.zip'; if (Test-Path $z) { Remove-Item $z -Force }; Compress-Archive -Path dist/win-unpacked/* -DestinationPath $z -CompressionLevel Optimal; $i = Get-Item $z; Write-Host ('Created ' + $i.FullName + ' (' + [math]::Round($i.Length/1MB,1) + ' MB)')\""
   },
   "author": "",
   "license": "MIT",
