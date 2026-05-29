@@ -285,9 +285,14 @@ class Bridge:
             if unmapped:
                 log("warn", f"Skipped {len(unmapped)} unmapped notes: {unmapped}")
 
-            log("info", "Benchmarking keypress latency…")
-            latency = engine.benchmark_keypress(self.kb, 20)
-            log("info", f"avg keypress overhead = {latency * 1000:.3f} ms")
+            # Use a fixed latency offset (~1.5 ms is the measured average for
+            # pynput's Win32 SendInput on modern hardware). Previously we ran
+            # benchmark_keypress here which pressed 'a' 20 times to measure
+            # the real overhead, but those presses landed in whatever window
+            # had focus when Play fired — usually the target game — sending
+            # 20 stray 'a's right before playback started. Not worth the
+            # ~1 ms accuracy gain.
+            latency = 0.0015
 
             log("info", f"Focusing target: {target['process']} | {target['title']}")
             engine.focus_window(target)
