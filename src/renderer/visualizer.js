@@ -70,6 +70,13 @@ class Visualizer {
     }
     this.whiteIdx = new Map(this.whiteNotes.map((n, i) => [n, i]));
     this.cursor = 0;
+    // Reset the clock to the start so a freshly-loaded MIDI shows t=0
+    // instead of inheriting the previous track's scrub position.
+    this.syncServerElapsed = 0;
+    this.syncClientNowMs = performance.now();
+    this.frozenElapsed = null;
+    this.playing = false;
+    this.dragLock = false;
   }
 
   startClock(totalDuration, startElapsed = 0) {

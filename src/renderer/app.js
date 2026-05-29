@@ -202,6 +202,9 @@ window.api.onEngineEvent((evt) => {
       }
       updateTrackStrip();
       els.timeTotal.textContent = fmtClock(totalDuration);
+      els.timeElapsed.textContent = fmtClock(0);
+      els.scrubFill.style.width = '0%';
+      els.scrubThumb.style.left = '0%';
       break;
 
     case 'countdown':
