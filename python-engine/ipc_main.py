@@ -264,6 +264,12 @@ class Bridge:
             countdown = int(msg.get("countdown", 3))
             collect_stats = bool(msg.get("stats", False))
             midi_path = msg["midi_path"]
+            try:
+                start_at = float(msg.get("start_at", 0.0))
+                if start_at < 0:
+                    start_at = 0.0
+            except (TypeError, ValueError):
+                start_at = 0.0
 
             target = self._resolve_window(target_hwnd)
             if target is None:
@@ -307,10 +313,16 @@ class Bridge:
                     time.sleep(1)
 
             self.session_state = engine.State(len(events), total_dur, bpm)
+            # If the user pre-seeked via the scrubber before pressing Play,
+            # apply that as the initial position — playback_loop honours
+            # seek_request at the top of its first iteration.
+            if start_at > 0 and total_dur > 0:
+                self.session_state.seek_request = min(start_at, total_dur)
             emit({"event": "playback_started",
                   "total_notes": len(events),
                   "duration": round(total_dur, 3),
-                  "bpm": round(bpm, 2)})
+                  "bpm": round(bpm, 2),
+                  "start_elapsed": round(start_at, 4)})
 
             # Focus monitor pushes focus state into state; we mirror to UI.
             threading.Thread(

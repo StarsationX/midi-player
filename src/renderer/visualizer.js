@@ -28,6 +28,11 @@ class Visualizer {
     this.frozenElapsed = null;     // non-null while paused
     this.playing = false;
     this.totalDuration = 0;
+    // While the user is dragging the scrubber, ignore incoming progress
+    // packets — otherwise the visualizer flickers between the drag
+    // position and the engine's stale elapsed (the seek hasn't been
+    // processed yet on the engine side).
+    this.dragLock = false;
 
     new ResizeObserver(() => this._resize()).observe(canvas);
     this._resize();
@@ -67,8 +72,8 @@ class Visualizer {
     this.cursor = 0;
   }
 
-  startClock(totalDuration) {
-    this.syncServerElapsed = 0;
+  startClock(totalDuration, startElapsed = 0) {
+    this.syncServerElapsed = startElapsed || 0;
     this.syncClientNowMs = performance.now();
     this.frozenElapsed = null;
     this.playing = true;
@@ -81,8 +86,11 @@ class Visualizer {
     this.frozenElapsed = null;
   }
 
+  setDragLock(on) { this.dragLock = !!on; }
+
   // Resync from a Python "progress" packet.
   clockSet({ elapsed, frozen_elapsed }) {
+    if (this.dragLock) return;     // user is mid-scrub; ignore stale server time
     const prev = this.elapsed();
     this.frozenElapsed = (frozen_elapsed === null || frozen_elapsed === undefined)
       ? null : frozen_elapsed;

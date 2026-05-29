@@ -219,7 +219,7 @@ window.api.onEngineEvent((evt) => {
       totalDuration = evt.duration;
       totalNotes = evt.total_notes;
       bpm = evt.bpm;
-      viz.startClock(evt.duration);
+      viz.startClock(evt.duration, evt.start_elapsed || 0);
       setStatus('playing', 'Playing');
       updateTrackStrip();
       break;
@@ -468,6 +468,9 @@ function doPlay() {
   const target = selectedTarget();
   if (!path) { log('error', 'Pick a MIDI file first.'); return; }
   if (!target) { log('error', 'Pick a target window first (Refresh).'); return; }
+  // If the user pre-seeked via the scrubber before pressing Play, start
+  // playback from that position instead of t=0.
+  const preSeek = viz.elapsed();
   window.api.send({
     cmd: 'play',
     midi_path: path,
@@ -476,6 +479,7 @@ function doPlay() {
     tempo: parseFloat(els.tempo.value),
     countdown: parseInt(els.countdown.value, 10) || 0,
     stats: !!els.stats.checked,
+    start_at: preSeek > 0.25 ? preSeek : 0,
   });
 }
 
@@ -585,6 +589,7 @@ els.scrubber.addEventListener('mousedown', (e) => {
   if (e.button !== 0 || totalDuration <= 0) return;
   isDragging = true;
   els.scrubber.classList.add('is-dragging');
+  viz.setDragLock(true);              // ignore stale progress packets
   const t = clientXToTime(e.clientX);
   viz.seek(t);
   requestSeek(t);
@@ -602,6 +607,10 @@ window.addEventListener('mouseup', () => {
   isDragging = false;
   els.scrubber.classList.remove('is-dragging');
   if (pendingSeek !== null) flushSeek();
+  // Hold the drag lock briefly after release so the engine has time to
+  // process the final seek before its progress packets can yank the
+  // visualizer back to wherever it was a moment ago.
+  setTimeout(() => viz.setDragLock(false), 250);
 });
 
 els.scrubber.addEventListener('keydown', (e) => {
@@ -614,8 +623,10 @@ els.scrubber.addEventListener('keydown', (e) => {
   else return;
   e.preventDefault();
   next = Math.max(0, Math.min(totalDuration, next));
+  viz.setDragLock(true);
   viz.seek(next);
   requestSeek(next);
+  setTimeout(() => viz.setDragLock(false), 250);
 });
 
 // --------------------------------------------------------------------------
