@@ -89,13 +89,39 @@ Hotkeys (work globally):
 - **F7** — Stop
 - **F8** — Toggle pause / resume
 
-## Build a standalone Windows installer
+## Build a portable .exe (zero-install)
+
+The recommended path produces a single ZIP your friends can drop anywhere, double-click `MIDI Player.exe`, and run — no install, no admin, no Python needed:
+
+```powershell
+npm run build:zip
+```
+
+This:
+1. Bundles the Python sidecar into `python-engine/ipc_main.exe` via PyInstaller (~11 MB self-contained engine).
+2. Packs the Electron app + bundled engine into `dist/win-unpacked/`.
+3. Zips that into `dist/MIDI-Player-portable.zip` (~118 MB compressed).
+
+### Single-file portable (`MIDI Player.exe` with no extract step)
+
+```powershell
+npm run build:portable
+```
+
+This produces a single self-extracting `.exe` via `electron-builder`'s portable target, **but** it requires the build user to be able to create symlinks (Windows 10/11 restricts this by default — the build will fail extracting macOS code-signing tools). Two ways to enable it:
+
+- **Windows Developer Mode** *(recommended, one-time toggle)*: Settings → System → For developers → **Developer Mode** → On. Then re-run `npm run build:portable`.
+- **Run as Administrator**: open the PowerShell terminal as admin and re-run.
+
+Without that, the build silently produces only `dist/win-unpacked/` (which is what `build:zip` then zips, so you still get a working portable artifact).
+
+### Build an installer (registers in Start Menu)
 
 ```powershell
 npm run build:win
 ```
 
-Produces `dist/MIDI Player Setup x.x.x.exe` (NSIS installer) and a `MIDI Player x.x.x.exe` portable. The bundled app expects Python to be installed on the user's machine — `python-engine/` is shipped as an extra resource. For zero-install distribution, wrap `python-engine/` with [PyInstaller](https://pyinstaller.org/) first and adapt `src/main.js` to spawn the resulting `.exe` instead of `python`.
+Produces an NSIS installer in `dist/`.
 
 ---
 
