@@ -520,8 +520,17 @@ def playback_loop(events, state, kb, latency_offset, q, collect_stats):
                             pass
                         break
 
+                # Normal completion of the sleep — go fire the event.
                 if not interrupted:
                     break
+                # A seek arrived: bail out of the middle loop too so the
+                # outer loop's seek handler runs (otherwise we'd loop in
+                # here forever — seek_request stays set, inner sleep keeps
+                # detecting it, middle loop keeps re-entering inner).
+                if state.seek_request is not None:
+                    break
+                # Otherwise it was a pause — loop the middle while again
+                # to drain it.
 
             # If a seek was requested mid-sleep, restart the outer loop
             # without firing this event.
