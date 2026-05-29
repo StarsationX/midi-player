@@ -363,6 +363,7 @@ class State:
         "timing_errors",
         "base_time",       # perf_counter() reference; visualizer reads this
         "frozen_elapsed",  # float when paused, None when running
+        "seek_request",    # float seconds when user requested a seek, else None
     )
 
     def __init__(self, total_notes, total_duration, bpm):
@@ -379,6 +380,7 @@ class State:
         self.timing_errors = []
         self.base_time = 0.0
         self.frozen_elapsed = None
+        self.seek_request = None
 
     # The pause gate is paused when EITHER focus is lost OR the user paused.
     # Helpers below keep the two sources coherent — flipping one shouldn't
@@ -450,16 +452,37 @@ def playback_loop(events, state, kb, latency_offset, q, collect_stats):
         state.frozen_elapsed = None
         total = len(events)
 
-        for i in range(total):
+        i = 0
+        while i < total:
+            if stop_event.is_set():
+                return
+
+            # Honour seek requests at the start of each event iteration.
+            seek = state.seek_request
+            if seek is not None:
+                state.seek_request = None
+                target_t = max(0.0, seek)
+                j = 0
+                while j < total and events[j][0] < target_t:
+                    j += 1
+                i = j
+                base = perf() - target_t
+                state.base_time = base
+                state.elapsed = target_t
+                state.played_count = i
+                if not pause_event.is_set():
+                    state.frozen_elapsed = target_t
+                else:
+                    state.frozen_elapsed = None
+                if i >= total:
+                    break
+
             t_sec, key, duration, note, channel = events[i]
 
-            # Hold here until we're either stopping, or we've fully waited
-            # out this event's target time without being paused mid-sleep.
             while True:
                 if stop_event.is_set():
                     return
 
-                # Drain a pause if one is asserted right now.
                 if not pause_event.is_set():
                     ps = perf()
                     state.frozen_elapsed = ps - base   # freeze visualizer
@@ -472,12 +495,15 @@ def playback_loop(events, state, kb, latency_offset, q, collect_stats):
 
                 target = base + t_sec - latency_offset
 
-                # Pause-aware sleep. Short slices so a pause flipped during
-                # a long inter-note gap is honoured promptly.
+                # Pause/seek-aware sleep. Short slices so a flip during a
+                # long inter-note gap is honoured promptly.
                 interrupted = False
                 while True:
                     if stop_event.is_set():
                         return
+                    if state.seek_request is not None:
+                        interrupted = True
+                        break
                     remaining = target - perf()
                     if remaining <= 0:
                         break
@@ -496,7 +522,11 @@ def playback_loop(events, state, kb, latency_offset, q, collect_stats):
 
                 if not interrupted:
                     break
-                # else: a pause arrived mid-sleep, loop back and drain it
+
+            # If a seek was requested mid-sleep, restart the outer loop
+            # without firing this event.
+            if state.seek_request is not None:
+                continue
 
             actual = perf()
             play(kb, key)
@@ -511,6 +541,8 @@ def playback_loop(events, state, kb, latency_offset, q, collect_stats):
             state.elapsed = actual - base
             if collect_stats:
                 state.timing_errors.append(actual - target)
+
+            i += 1
 
         stop_event.set()
     finally:

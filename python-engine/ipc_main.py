@@ -15,6 +15,7 @@ Protocol (newline-delimited JSON in both directions):
     {"cmd": "pause"}
     {"cmd": "resume"}
     {"cmd": "toggle_pause"}
+    {"cmd": "seek", "time": 12.34}
     {"cmd": "set_hotkeys", "play": "<f6>", "stop": "<f7>", "pause": "<f8>"}
     {"cmd": "shutdown"}
 
@@ -49,7 +50,22 @@ from pynput.keyboard import Controller, GlobalHotKeys
 
 import midi_player as engine
 
-SCRIPT_DIR = Path(__file__).resolve().parent
+
+def _script_dir():
+    """Return the directory containing the `mappings/` folder.
+
+    Dev mode: alongside this .py file.
+    PyInstaller --onefile: in sys._MEIPASS (where bundled data is extracted).
+    PyInstaller --onedir:  next to the .exe.
+    """
+    if getattr(sys, 'frozen', False):
+        if hasattr(sys, '_MEIPASS'):
+            return Path(sys._MEIPASS)
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+SCRIPT_DIR = _script_dir()
 
 # ---------------------------------------------------------------------------
 # stdio plumbing
@@ -174,6 +190,21 @@ class Bridge:
         else:
             self.cmd_pause(_)
 
+    def cmd_seek(self, msg):
+        s = self.session_state
+        if s is None:
+            return
+        try:
+            t = float(msg.get("time", 0.0))
+        except (TypeError, ValueError):
+            return
+        # Clamp to track duration; bounded by playback_loop too.
+        if s.total_duration > 0:
+            t = max(0.0, min(t, s.total_duration))
+        else:
+            t = max(0.0, t)
+        s.seek_request = t
+
     def cmd_set_hotkeys(self, msg):
         self.play_hotkey = msg.get("play", "<f6>") or ""
         self.stop_hotkey = msg.get("stop", "<f7>") or ""
@@ -262,12 +293,13 @@ class Bridge:
             engine.focus_window(target)
             time.sleep(0.3)
 
-            for i in range(countdown, 0, -1):
-                if self._stop_requested:
-                    log("info", "Cancelled before playback.")
-                    return
-                emit({"event": "countdown", "i": i})
-                time.sleep(1)
+            if countdown > 0:
+                for i in range(countdown, 0, -1):
+                    if self._stop_requested:
+                        log("info", "Cancelled before playback.")
+                        return
+                    emit({"event": "countdown", "i": i})
+                    time.sleep(1)
 
             self.session_state = engine.State(len(events), total_dur, bpm)
             emit({"event": "playback_started",
@@ -353,6 +385,7 @@ DISPATCH = {
     "pause":         "cmd_pause",
     "resume":        "cmd_resume",
     "toggle_pause":  "cmd_toggle_pause",
+    "seek":          "cmd_seek",
     "set_hotkeys":   "cmd_set_hotkeys",
     "shutdown":      "cmd_shutdown",
 }

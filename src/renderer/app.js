@@ -1,51 +1,66 @@
 // Renderer-side glue: wires DOM controls to the Python sidecar via the
-// `window.api` bridge. Owns settings persistence (localStorage), the
-// visualizer's render loop, and the log/status views.
+// `window.api` bridge. Owns settings persistence, the visualizer's render
+// loop, scrubber UX, log routing.
 
 const $ = (id) => document.getElementById(id);
 const els = {
+  // sidebar — source
   midiPath: $('midi-path'),
   midiBrowse: $('midi-browse'),
   targetSelect: $('target-select'),
   targetRefresh: $('target-refresh'),
   mappingSelect: $('mapping-select'),
   mappingBrowse: $('mapping-browse'),
+  // sidebar — playback
   tempo: $('tempo'),
   tempoLabel: $('tempo-label'),
   countdown: $('countdown'),
   stats: $('stats'),
+  // sidebar — hotkeys
   hkPlay: $('hotkey-play'),
   hkStop: $('hotkey-stop'),
   hkPause: $('hotkey-pause'),
   hkApply: $('hotkey-apply'),
   hkStatus: $('hotkey-status'),
+  // header
+  headerStatus: $('header-status'),
+  statusText: $('status-text'),
+  // transport
   play: $('play'),
   pause: $('pause'),
   stop: $('stop'),
+  timeElapsed: $('time-elapsed'),
+  timeTotal: $('time-total'),
+  metaNotes: $('meta-notes'),
+  metaBpm: $('meta-bpm'),
+  // scrubber
+  scrubber: $('scrubber'),
+  scrubFill: $('scrubber-fill'),
+  scrubHover: $('scrubber-hover'),
+  scrubThumb: $('scrubber-thumb'),
+  scrubTooltip: $('scrubber-tooltip'),
+  // viz / log
+  vizCanvas: $('viz'),
+  vizEmptyHint: $('viz-empty-hint'),
+  logPanel: $('log-panel'),
   log: $('log'),
   logClear: $('log-clear'),
-  pillState: $('pill-state'),
-  pillTime: $('pill-time'),
-  pillNotes: $('pill-notes'),
-  pillBpm: $('pill-bpm'),
-  pillFocus: $('pill-focus'),
-  progressBar: $('progress-bar'),
-  headerMeta: $('header-meta'),
-  vizCanvas: $('viz'),
+  logToggle: $('log-toggle'),
 };
 
-const SETTINGS_KEY = 'midi-player.settings.v1';
+const SETTINGS_KEY = 'midi-player.settings.v2';
 const settings = Object.assign({
   midiPath: '',
   mapping: 'roblox',
   customMappingPath: '',
   tempo: 1.0,
-  countdown: 3,
+  countdown: 0,
   stats: false,
   playHotkey: '<f6>',
   stopHotkey: '<f7>',
   pauseHotkey: '<f8>',
   targetHint: '',
+  logCollapsed: false,
 }, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
 
 function saveSettings() {
@@ -56,13 +71,13 @@ function saveSettings() {
 // State
 // --------------------------------------------------------------------------
 let windows = [];
-let lastMappingArg = null;        // resolved mapping arg (preset or path)
 let lastMidiPath = null;
 let totalDuration = 0;
 let totalNotes = 0;
 let bpm = 0;
 let isPlaying = false;
 let isPaused = false;
+let isFocusLost = false;
 const viz = new Visualizer(els.vizCanvas);
 
 // --------------------------------------------------------------------------
@@ -82,7 +97,7 @@ function log(level, message) {
 }
 
 // --------------------------------------------------------------------------
-// Restore UI from settings
+// Settings -> UI
 // --------------------------------------------------------------------------
 function applySettingsToUI() {
   els.midiPath.value = settings.midiPath || '';
@@ -99,6 +114,10 @@ function applySettingsToUI() {
   els.hkPlay.value = settings.playHotkey;
   els.hkStop.value = settings.stopHotkey;
   els.hkPause.value = settings.pauseHotkey;
+  if (settings.logCollapsed) {
+    els.logPanel.classList.add('is-collapsed');
+    els.logToggle.textContent = 'Expand';
+  }
 }
 
 function addCustomMappingOption(p) {
@@ -134,11 +153,11 @@ window.api.onEngineEvent((evt) => {
       break;
 
     case 'midi_loaded':
-      // Hand events to the visualizer ahead of playback.
       viz.load(evt.events, evt.note_to_key);
       totalDuration = evt.duration;
       totalNotes = evt.events.length;
       bpm = evt.bpm;
+      els.vizEmptyHint.classList.add('is-hidden');
       log('info', `Loaded "${lastMidiPath?.split(/[\\/]/).pop()}" — `
         + `${evt.events.length} events, ${evt.duration.toFixed(1)}s, `
         + `~${evt.bpm.toFixed(1)} BPM`);
@@ -147,12 +166,13 @@ window.api.onEngineEvent((evt) => {
           `Skipped ${evt.unmapped.length} notes outside the mapping range: `
           + `[${evt.unmapped.join(', ')}]`);
       }
-      updatePills();
+      refreshTransport();
       break;
 
     case 'countdown':
+      // Only surfaced when countdown > 0 — engine skips entirely when 0.
       log('info', `Starting in ${evt.i}…`);
-      els.headerMeta.textContent = `Starting in ${evt.i}…`;
+      setStatus('paused', `Starting in ${evt.i}…`);
       break;
 
     case 'playback_started':
@@ -166,9 +186,7 @@ window.api.onEngineEvent((evt) => {
       totalNotes = evt.total_notes;
       bpm = evt.bpm;
       viz.startClock(evt.duration);
-      els.pillState.textContent = 'Playing';
-      els.pillState.style.color = 'var(--good)';
-      els.headerMeta.textContent = 'Playing';
+      setStatus('playing', 'Playing');
       log('info', '=== Playing ===');
       break;
 
@@ -188,9 +206,7 @@ window.api.onEngineEvent((evt) => {
       els.stop.disabled = true;
       setPauseButton(false);
       viz.stopClock();
-      els.pillState.textContent = 'Idle';
-      els.pillState.style.color = 'var(--fg)';
-      els.headerMeta.textContent = 'Idle';
+      setStatus('idle', 'Idle');
       log('info', '=== Done ===');
       if (evt.stats) {
         const s = evt.stats;
@@ -204,7 +220,6 @@ window.api.onEngineEvent((evt) => {
 
     case 'hotkey':
       if (evt.name === 'play') {
-        // Re-purpose Play hotkey as Resume when paused, otherwise start.
         if (isPlaying && isPaused) doResume();
         else doPlay();
       } else if (evt.name === 'stop') doStop();
@@ -220,60 +235,58 @@ window.api.onEngineEvent((evt) => {
 function fmtMs(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + 'ms'; }
 
 function onProgress(evt) {
-  const elapsed = viz.elapsed();
-  els.pillTime.textContent = `${fmtClock(elapsed)} / ${fmtClock(totalDuration)}`;
-  els.pillNotes.textContent = `${evt.played} / ${totalNotes}`;
-  els.pillBpm.textContent = `${bpm.toFixed(1)} BPM`;
-
-  // Sync local pause state with engine truth (covers hotkey-driven pauses).
+  // Sync local pause state with engine truth.
   if (typeof evt.user_paused === 'boolean' && evt.user_paused !== isPaused) {
     isPaused = evt.user_paused;
     setPauseButton(isPaused);
   }
+  isFocusLost = !!evt.focus_lost;
 
-  if (evt.focus_lost) {
-    els.pillFocus.textContent = '● LOST FOCUS – paused';
-    els.pillFocus.classList.remove('good');
-    els.pillFocus.classList.add('bad');
-    els.pillState.textContent = isPaused
-      ? 'Paused — focus lost'
-      : 'Paused — focus lost';
-    els.pillState.style.color = 'var(--bad)';
+  // Determine label
+  if (!isPlaying) {
+    setStatus('idle', 'Idle');
+  } else if (isFocusLost) {
+    setStatus('blocked', 'Paused · focus lost');
+  } else if (isPaused) {
+    setStatus('paused', 'Paused');
   } else {
-    els.pillFocus.textContent = '● FOCUSED';
-    els.pillFocus.classList.remove('bad');
-    els.pillFocus.classList.add('good');
-    if (isPlaying) {
-      if (isPaused) {
-        els.pillState.textContent = 'Paused';
-        els.pillState.style.color = 'var(--warn, #ffc857)';
-      } else {
-        els.pillState.textContent = 'Playing';
-        els.pillState.style.color = 'var(--good)';
-      }
-    }
+    setStatus('playing', 'Playing');
   }
+
+  els.metaNotes.textContent = `${evt.played} / ${totalNotes}`;
+}
+
+function setStatus(kind, text) {
+  els.headerStatus.classList.remove('is-playing', 'is-paused', 'is-blocked');
+  if (kind === 'playing') els.headerStatus.classList.add('is-playing');
+  else if (kind === 'paused') els.headerStatus.classList.add('is-paused');
+  else if (kind === 'blocked') els.headerStatus.classList.add('is-blocked');
+  els.statusText.textContent = text;
 }
 
 function setPauseButton(paused) {
   if (paused) {
-    els.pause.textContent = '▶ Resume';
+    els.pause.querySelector('span').textContent = 'Resume';
     els.pause.classList.add('is-resume');
+    els.pause.title = 'Resume (F8)';
   } else {
-    els.pause.textContent = '⏸ Pause';
+    els.pause.querySelector('span').textContent = 'Pause';
     els.pause.classList.remove('is-resume');
+    els.pause.title = 'Pause (F8)';
   }
 }
 
 function fmtClock(s) {
+  if (!isFinite(s) || s < 0) s = 0;
   const m = Math.floor(s / 60), r = Math.floor(s % 60);
   return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
 }
 
-function updatePills() {
-  els.pillTime.textContent = `00:00 / ${fmtClock(totalDuration)}`;
-  els.pillNotes.textContent = `0 / ${totalNotes}`;
-  els.pillBpm.textContent = `${bpm.toFixed(1)} BPM`;
+function refreshTransport() {
+  els.timeTotal.textContent = fmtClock(totalDuration);
+  els.timeElapsed.textContent = fmtClock(viz.elapsed());
+  els.metaNotes.textContent = `0 / ${totalNotes}`;
+  els.metaBpm.textContent = bpm ? `${bpm.toFixed(1)} BPM` : '— BPM';
 }
 
 // --------------------------------------------------------------------------
@@ -291,9 +304,7 @@ els.midiBrowse.addEventListener('click', async () => {
 els.targetRefresh.addEventListener('click', () => requestWindows());
 
 els.mappingSelect.addEventListener('change', () => {
-  if (els.mappingSelect.value === '__custom__') {
-    return; // path already set when added
-  }
+  if (els.mappingSelect.value === '__custom__') return;
   settings.mapping = els.mappingSelect.value;
   saveSettings();
   loadMidi();
@@ -338,7 +349,14 @@ els.hkApply.addEventListener('click', () => {
 els.play.addEventListener('click', doPlay);
 els.pause.addEventListener('click', doTogglePause);
 els.stop.addEventListener('click', doStop);
+
 els.logClear.addEventListener('click', () => { els.log.textContent = ''; });
+els.logToggle.addEventListener('click', () => {
+  els.logPanel.classList.toggle('is-collapsed');
+  settings.logCollapsed = els.logPanel.classList.contains('is-collapsed');
+  els.logToggle.textContent = settings.logCollapsed ? 'Expand' : 'Collapse';
+  saveSettings();
+});
 
 els.targetSelect.addEventListener('change', () => {
   const idx = parseInt(els.targetSelect.value, 10);
@@ -359,14 +377,10 @@ function sendHotkeys() {
     pause: settings.pauseHotkey,
   });
   els.hkStatus.textContent =
-    `Active: Play = ${settings.playHotkey}   `
-    + `Stop = ${settings.stopHotkey}   `
-    + `Pause = ${settings.pauseHotkey}`;
+    `Play ${settings.playHotkey}   ·   Pause ${settings.pauseHotkey}   ·   Stop ${settings.stopHotkey}`;
 }
 
-function requestWindows() {
-  window.api.send({ cmd: 'list_windows' });
-}
+function requestWindows() { window.api.send({ cmd: 'list_windows' }); }
 
 function resolveMappingArg() {
   if (els.mappingSelect.value === '__custom__') {
@@ -380,11 +394,10 @@ function loadMidi() {
   const p = els.midiPath.value;
   if (!p) return;
   lastMidiPath = p;
-  lastMappingArg = resolveMappingArg();
   window.api.send({
     cmd: 'load_midi',
     path: p,
-    mapping: lastMappingArg,
+    mapping: resolveMappingArg(),
     tempo: parseFloat(els.tempo.value),
   });
 }
@@ -420,6 +433,7 @@ function doPause() {
   if (!isPlaying || isPaused) return;
   isPaused = true;
   setPauseButton(true);
+  setStatus('paused', 'Paused');
   window.api.send({ cmd: 'pause' });
 }
 
@@ -427,6 +441,7 @@ function doResume() {
   if (!isPlaying || !isPaused) return;
   isPaused = false;
   setPauseButton(false);
+  setStatus('playing', 'Playing');
   window.api.send({ cmd: 'resume' });
 }
 
@@ -434,6 +449,25 @@ function doTogglePause() {
   if (!isPlaying) return;
   if (isPaused) doResume();
   else doPause();
+}
+
+// Throttled seek — at most ~30 Hz so a rapid drag doesn't flood the sidecar.
+let pendingSeek = null;
+let lastSeekSentAt = 0;
+function requestSeek(t) {
+  pendingSeek = t;
+  const now = performance.now();
+  if (now - lastSeekSentAt >= 33) flushSeek();
+  else if (!flushSeek._scheduled) {
+    flushSeek._scheduled = true;
+    setTimeout(() => { flushSeek._scheduled = false; flushSeek(); }, 33);
+  }
+}
+function flushSeek() {
+  if (pendingSeek === null) return;
+  const t = pendingSeek; pendingSeek = null;
+  lastSeekSentAt = performance.now();
+  window.api.send({ cmd: 'seek', time: t });
 }
 
 // --------------------------------------------------------------------------
@@ -465,17 +499,95 @@ function populateWindows() {
 }
 
 // --------------------------------------------------------------------------
+// Scrubber — YouTube-style: hover preview, click-to-seek, drag-to-scrub
+// --------------------------------------------------------------------------
+let isDragging = false;
+
+function scrubberRect() { return els.scrubber.getBoundingClientRect(); }
+
+function clientXToTime(clientX) {
+  if (totalDuration <= 0) return 0;
+  const r = scrubberRect();
+  const pct = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  return pct * totalDuration;
+}
+
+function updateHoverIndicator(clientX, isOverBar) {
+  if (totalDuration <= 0) {
+    els.scrubHover.style.width = '0%';
+    return;
+  }
+  const r = scrubberRect();
+  const pct = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  if (isOverBar) els.scrubHover.style.width = `${pct * 100}%`;
+  // Tooltip
+  const t = pct * totalDuration;
+  els.scrubTooltip.textContent = fmtClock(t);
+  // position tooltip — center on cursor, clamped to track
+  const trackWidth = r.width;
+  const tooltipX = Math.max(20, Math.min(trackWidth - 20, clientX - r.left));
+  els.scrubTooltip.style.left = `${tooltipX}px`;
+}
+
+els.scrubber.addEventListener('mousemove', (e) => {
+  if (isDragging) return;          // handled by window listener below
+  updateHoverIndicator(e.clientX, true);
+});
+els.scrubber.addEventListener('mouseleave', () => {
+  if (!isDragging) els.scrubHover.style.width = '0%';
+});
+
+els.scrubber.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  if (totalDuration <= 0) return;
+  isDragging = true;
+  els.scrubber.classList.add('is-dragging');
+  const t = clientXToTime(e.clientX);
+  viz.seek(t);
+  requestSeek(t);
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  updateHoverIndicator(e.clientX, false);
+  const t = clientXToTime(e.clientX);
+  viz.seek(t);
+  requestSeek(t);
+});
+
+window.addEventListener('mouseup', () => {
+  if (!isDragging) return;
+  isDragging = false;
+  els.scrubber.classList.remove('is-dragging');
+  // ensure the last position is sent (bypass throttle)
+  if (pendingSeek !== null) flushSeek();
+});
+
+// Keyboard scrubbing on the slider (Left/Right arrows, Home/End)
+els.scrubber.addEventListener('keydown', (e) => {
+  if (totalDuration <= 0) return;
+  let cur = viz.elapsed();
+  let next = cur;
+  if (e.key === 'ArrowLeft')  next = cur - 5;
+  else if (e.key === 'ArrowRight') next = cur + 5;
+  else if (e.key === 'Home') next = 0;
+  else if (e.key === 'End')  next = totalDuration;
+  else return;
+  e.preventDefault();
+  next = Math.max(0, Math.min(totalDuration, next));
+  viz.seek(next);
+  requestSeek(next);
+});
+
+// --------------------------------------------------------------------------
 // Drag-and-drop
 // --------------------------------------------------------------------------
 const dropOverlay = document.getElementById('drop-overlay');
 let dragDepth = 0;
-
-function setOverlay(on) {
-  dropOverlay.classList.toggle('active', on);
-}
+function setOverlay(on) { dropOverlay.classList.toggle('active', on); }
 
 window.addEventListener('dragenter', (e) => {
-  // Only react to OS-level file drags, not internal text drags.
   if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
   e.preventDefault();
   dragDepth++;
@@ -498,18 +610,12 @@ window.addEventListener('drop', (e) => {
   setOverlay(false);
   const files = e.dataTransfer && e.dataTransfer.files;
   if (!files || !files.length) return;
-
-  // Resolve paths via the preload bridge (Electron 32 webUtils).
   const paths = [];
   for (const f of files) {
-    try { paths.push(window.api.getDroppedFilePath(f)); }
-    catch (_) { /* not a real OS file */ }
+    try { paths.push(window.api.getDroppedFilePath(f)); } catch (_) {}
   }
-
-  // Prefer the first MIDI; if no MIDI, accept the first JSON as a mapping.
   const midi = paths.find(p => /\.midi?$/i.test(p));
   const json = paths.find(p => /\.json$/i.test(p));
-
   if (midi) {
     els.midiPath.value = midi;
     settings.midiPath = midi;
@@ -528,8 +634,7 @@ window.addEventListener('drop', (e) => {
     log('warn', `Drop ignored — only .mid/.midi/.json files are supported.`);
   }
 });
-
-// Prevent accidental file navigation if drop misses our handler.
+// catch-all so a missed drop doesn't navigate the page away
 window.addEventListener('dragover', (e) => e.preventDefault());
 window.addEventListener('drop',     (e) => e.preventDefault());
 
@@ -538,15 +643,22 @@ window.addEventListener('drop',     (e) => e.preventDefault());
 // --------------------------------------------------------------------------
 function frame() {
   viz.render();
+  const elapsed = viz.elapsed();
+
+  // Scrubber fill + thumb
   if (totalDuration > 0) {
-    const pct = Math.min(100, 100 * viz.elapsed() / totalDuration);
-    els.progressBar.style.width = pct + '%';
+    const pct = Math.max(0, Math.min(100, 100 * elapsed / totalDuration));
+    els.scrubFill.style.width = pct + '%';
+    els.scrubThumb.style.left = pct + '%';
+    els.scrubber.setAttribute('aria-valuenow', pct.toFixed(0));
+  } else {
+    els.scrubFill.style.width = '0%';
+    els.scrubThumb.style.left = '0%';
   }
-  // Tween the time pill between progress packets too.
-  if (isPlaying) {
-    els.pillTime.textContent =
-      `${fmtClock(viz.elapsed())} / ${fmtClock(totalDuration)}`;
-  }
+
+  // Time display
+  els.timeElapsed.textContent = fmtClock(elapsed);
+
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -555,4 +667,5 @@ requestAnimationFrame(frame);
 // Boot
 // --------------------------------------------------------------------------
 applySettingsToUI();
+refreshTransport();
 log('info', 'Booting…');

@@ -13,110 +13,147 @@
       <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M3 18V6h2v12H3zm4 0V6h2v12H7zm5 2V4h2v16h-2zm5-2V6h2v12h-2zm5-9V6h-2v3h2zm0 6v-3h-2v3h2z" fill="currentColor"/>
       </svg>
-      <span>MIDI Player</span>
+      <span class="brand-name">MIDI Player</span>
+      <span class="brand-sub">studio</span>
     </div>
-    <div class="header-meta" id="header-meta">Idle</div>
+    <div class="header-status" id="header-status">
+      <span class="status-dot"></span>
+      <span class="status-text" id="status-text">Idle</span>
+    </div>
   </header>
 
   <main class="app-grid">
 
-    <!-- Controls panel -->
-    <section class="panel controls">
-      <h2 class="panel-title">Setup</h2>
+    <!-- Sidebar -->
+    <aside class="panel sidebar">
 
-      <div class="field">
-        <label>MIDI file</label>
-        <div class="file-row">
-          <input id="midi-path" type="text" readonly placeholder="No file loaded — click Browse"/>
-          <button id="midi-browse" class="btn">Browse…</button>
+      <section class="section">
+        <h2 class="section-title">Source</h2>
+        <div class="field">
+          <label>MIDI file</label>
+          <div class="file-row">
+            <input id="midi-path" type="text" readonly placeholder="Drag a .mid here, or browse…"/>
+            <button id="midi-browse" class="btn btn-icon" title="Browse">…</button>
+          </div>
         </div>
-      </div>
-
-      <div class="field">
-        <label>Target window</label>
-        <div class="file-row">
-          <select id="target-select"><option value="">— refresh to populate —</option></select>
-          <button id="target-refresh" class="btn">Refresh</button>
+        <div class="field">
+          <label>Target window</label>
+          <div class="file-row">
+            <select id="target-select"><option value="">— refresh to populate —</option></select>
+            <button id="target-refresh" class="btn btn-icon" title="Refresh">↻</button>
+          </div>
         </div>
-      </div>
-
-      <div class="field">
-        <label>Mapping</label>
-        <div class="file-row">
-          <select id="mapping-select">
-            <option value="roblox">roblox — 36 keys (1…m, no Shift) — most Roblox games</option>
-            <option value="roblox61">roblox61 — 61 keys (C2–C7) with Shift sharps</option>
-            <option value="roblox66">roblox66 — 66 keys with Shift sharps</option>
-            <option value="roblox88">roblox88 — full 88 keys with Shift</option>
-            <option value="roblox88ctrl">roblox88ctrl — 88 keys, Ctrl+1…Ctrl+j for the outer 27 notes</option>
-            <option value="virtualpiano">virtualpiano — 88 keys</option>
-            <option value="virtualpiano66">virtualpiano66 — 66 keys</option>
-          </select>
-          <button id="mapping-browse" class="btn">Custom…</button>
+        <div class="field">
+          <label>Mapping</label>
+          <div class="file-row">
+            <select id="mapping-select">
+              <option value="roblox">roblox — 36 keys (1…m, no Shift)</option>
+              <option value="roblox61">roblox61 — 61 keys + Shift sharps</option>
+              <option value="roblox66">roblox66 — 66 keys + Shift sharps</option>
+              <option value="roblox88">roblox88 — full 88 keys, symbol layout</option>
+              <option value="roblox88ctrl">roblox88ctrl — 88 keys, Ctrl+1…Ctrl+j</option>
+              <option value="virtualpiano">virtualpiano — 88 keys</option>
+              <option value="virtualpiano66">virtualpiano66 — 66 keys</option>
+            </select>
+            <button id="mapping-browse" class="btn btn-icon" title="Custom mapping">+</button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div class="field-row">
+      <section class="section">
+        <h2 class="section-title">Playback</h2>
         <div class="field">
           <label>Tempo <span class="muted" id="tempo-label">1.00×</span></label>
           <input id="tempo" type="range" min="0.25" max="3" step="0.05" value="1"/>
         </div>
-        <div class="field" style="max-width:140px">
-          <label>Countdown</label>
-          <input id="countdown" type="number" min="0" max="10" value="3"/>
+        <div class="field-row">
+          <div class="field" style="max-width:120px">
+            <label>Countdown</label>
+            <input id="countdown" type="number" min="0" max="10" value="0"/>
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <label class="check"><input id="stats" type="checkbox"/> Timing stats</label>
+          </div>
         </div>
-        <div class="field" style="max-width:160px">
-          <label>&nbsp;</label>
-          <label class="check"><input id="stats" type="checkbox"/> Timing stats</label>
-        </div>
-      </div>
+      </section>
 
-      <div class="field">
-        <label>Hotkeys</label>
-        <div class="hotkey-row">
+      <section class="section">
+        <h2 class="section-title">Hotkeys</h2>
+        <div class="hotkey-grid">
           <span class="muted">Play</span>
           <input id="hotkey-play" type="text" value="<f6>" />
-          <span class="muted">Stop</span>
-          <input id="hotkey-stop" type="text" value="<f7>" />
           <span class="muted">Pause</span>
           <input id="hotkey-pause" type="text" value="<f8>" />
+          <span class="muted">Stop</span>
+          <input id="hotkey-stop" type="text" value="<f7>" />
+          <span></span><span></span>
           <button id="hotkey-apply" class="btn">Apply</button>
         </div>
-        <div class="muted small" id="hotkey-status">Default hotkeys active.</div>
+        <div class="muted small" id="hotkey-status" style="margin-top:8px">Defaults active.</div>
+      </section>
+    </aside>
+
+    <!-- Main column: visualizer / transport / log -->
+    <section class="main-col">
+
+      <div class="panel viz-panel">
+        <canvas id="viz" class="viz"></canvas>
+        <div class="viz-empty-hint" id="viz-empty-hint">Drag a MIDI file here to start</div>
       </div>
 
-      <div class="action-row">
-        <button id="play" class="btn btn-primary">▶ Play</button>
-        <button id="pause" class="btn btn-warn" disabled>⏸ Pause</button>
-        <button id="stop" class="btn btn-danger" disabled>■ Stop</button>
-      </div>
-    </section>
+      <div class="panel transport-panel">
+        <div class="scrubber" id="scrubber" role="slider"
+             tabindex="0" aria-label="Seek"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="scrubber-rail">
+            <div class="scrubber-hover" id="scrubber-hover"></div>
+            <div class="scrubber-fill"  id="scrubber-fill"></div>
+            <div class="scrubber-thumb" id="scrubber-thumb"></div>
+          </div>
+          <div class="scrubber-tooltip" id="scrubber-tooltip">00:00</div>
+        </div>
 
-    <!-- Visualizer + status -->
-    <section class="panel viz-panel">
-      <div class="viz-header">
-        <h2 class="panel-title">Visualizer</h2>
-        <div class="status-pills">
-          <span class="pill" id="pill-state">Idle</span>
-          <span class="pill" id="pill-time">00:00 / 00:00</span>
-          <span class="pill" id="pill-notes">0 / 0</span>
-          <span class="pill" id="pill-bpm">— BPM</span>
-          <span class="pill pill-focus" id="pill-focus">●</span>
+        <div class="transport-row">
+          <button id="play" class="btn btn-primary btn-transport" title="Play (F6)">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+            <span>Play</span>
+          </button>
+          <button id="pause" class="btn btn-warn btn-transport" disabled title="Pause (F8)">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+            <span>Pause</span>
+          </button>
+          <button id="stop" class="btn btn-danger btn-transport" disabled title="Stop (F7)">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>
+            <span>Stop</span>
+          </button>
+          <div class="transport-meta">
+            <div class="transport-time">
+              <span id="time-elapsed">00:00</span>
+              <span class="muted">/</span>
+              <span id="time-total">00:00</span>
+            </div>
+            <div class="transport-stats">
+              <span id="meta-notes">0 / 0</span>
+              <span class="dot-sep">·</span>
+              <span id="meta-bpm">— BPM</span>
+            </div>
+          </div>
         </div>
       </div>
-      <canvas id="viz" class="viz"></canvas>
-      <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
-    </section>
 
-    <!-- Log panel -->
-    <section class="panel log-panel">
-      <div class="log-header">
-        <h2 class="panel-title">Log</h2>
-        <button id="log-clear" class="btn btn-ghost">Clear</button>
+      <div class="panel log-panel" id="log-panel">
+        <div class="log-header">
+          <h2 class="section-title">Log</h2>
+          <div>
+            <button id="log-toggle" class="btn btn-ghost">Collapse</button>
+            <button id="log-clear"  class="btn btn-ghost">Clear</button>
+          </div>
+        </div>
+        <pre id="log" class="log"></pre>
       </div>
-      <pre id="log" class="log"></pre>
-    </section>
 
+    </section>
   </main>
 
   <div id="drop-overlay" class="drop-overlay">

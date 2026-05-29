@@ -83,15 +83,29 @@ class Visualizer {
 
   // Resync from a Python "progress" packet.
   clockSet({ elapsed, frozen_elapsed }) {
+    const prev = this.elapsed();
     this.frozenElapsed = (frozen_elapsed === null || frozen_elapsed === undefined)
       ? null : frozen_elapsed;
     this.syncServerElapsed = elapsed;
     this.syncClientNowMs = performance.now();
+    // If the timeline jumped backward (a seek), roll the render cursor
+    // back so notes behind the new playhead show up again.
+    if (elapsed + 0.2 < prev) this.cursor = 0;
+  }
+
+  // Optimistic seek: snap the local clock to t immediately so the visualizer
+  // tracks the user's drag without waiting for the engine roundtrip.
+  seek(t) {
+    if (!isFinite(t)) return;
+    this.syncServerElapsed = Math.max(0, t);
+    this.syncClientNowMs = performance.now();
+    if (this.frozenElapsed !== null) this.frozenElapsed = this.syncServerElapsed;
+    this.cursor = 0;
   }
 
   elapsed() {
     if (this.frozenElapsed !== null) return this.frozenElapsed;
-    if (!this.playing) return 0;
+    if (!this.playing) return this.syncServerElapsed; // preview-while-stopped
     return this.syncServerElapsed
       + (performance.now() - this.syncClientNowMs) / 1000;
   }
