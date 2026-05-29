@@ -9,23 +9,29 @@ const fs = require('fs');
 let mainWindow = null;
 let py = null;            // Python child process
 let pyBuf = '';           // line-buffer for stdout
+let pyStderrTail = '';    // last bit of stderr, used to enrich exit errors
+let pyLastError = '';     // last actionable error message we surfaced
 
 // ---------------------------------------------------------------------------
 // Python sidecar lifecycle
 // ---------------------------------------------------------------------------
 
 function pythonEnginePath() {
-  // In dev: python-engine/ next to package.json. In production (packaged):
-  // process.resourcesPath/python-engine.
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'python-engine');
   }
   return path.join(__dirname, '..', 'python-engine');
 }
 
-function pythonExecutable() {
-  // Honour PYTHON env var if set, else use 'python' on PATH.
-  return process.env.PYTHON || 'python';
+// Candidate launchers in order of preference. `py -3` is the Windows launcher
+// which is installed by the python.org installer even when `python` isn't on
+// PATH (extremely common on fresh Windows installs).
+function pythonCandidates() {
+  if (process.env.PYTHON) return [[process.env.PYTHON, []]];
+  if (process.platform === 'win32') {
+    return [['py', ['-3']], ['python', []], ['python3', []]];
+  }
+  return [['python3', []], ['python', []]];
 }
 
 function startPython() {
@@ -36,11 +42,45 @@ function startPython() {
     sendToRenderer('engine-error', `ipc_main.py not found at ${script}`);
     return;
   }
-  py = spawn(pythonExecutable(), ['-u', script], {
-    cwd: enginePath,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
-  });
+
+  // Try each candidate in order; recurse on spawn error.
+  const tryNext = (list) => {
+    if (!list.length) {
+      const tried = pythonCandidates()
+        .map(([e, a]) => [e, ...a].join(' ')).join(', ');
+      pyLastError =
+        `Couldn't find Python. Tried: ${tried}. ` +
+        `Install Python 3.10+ from https://python.org (check "Add to PATH"), ` +
+        `then restart the app. Or set the PYTHON env var to your python.exe path.`;
+      sendToRenderer('engine-error', pyLastError);
+      return;
+    }
+    const [exe, prefixArgs] = list[0];
+    const child = spawn(exe, [...prefixArgs, '-u', script], {
+      cwd: enginePath,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
+    });
+    let bound = false;
+    child.once('spawn', () => { bound = true; bindPython(child, exe, prefixArgs); });
+    child.once('error', (err) => {
+      if (bound) return;
+      // Try the next candidate.
+      tryNext(list.slice(1));
+    });
+  };
+  tryNext(candidates);
+}
+
+function bindPython(child, exe, prefixArgs) {
+  py = child;
+  pyBuf = '';
+  pyStderrTail = '';
+  pyLastError = '';
+  const launchCmd = [exe, ...prefixArgs].join(' ');
+  sendToRenderer('engine-event',
+    { event: 'log', level: 'info',
+      message: `Python sidecar launched via: ${launchCmd}` });
 
   py.stdout.setEncoding('utf-8');
   py.stdout.on('data', (chunk) => {
@@ -63,8 +103,7 @@ function startPython() {
 
   py.stderr.setEncoding('utf-8');
   py.stderr.on('data', (chunk) => {
-    // Python tracebacks etc. — surface as logs, not errors (Python warnings
-    // come here too).
+    pyStderrTail = (pyStderrTail + chunk).slice(-4000);
     chunk.split(/\r?\n/).filter(Boolean).forEach((line) => {
       sendToRenderer('engine-event',
         { event: 'log', level: 'warn', message: `[py] ${line}` });
@@ -72,23 +111,38 @@ function startPython() {
   });
 
   py.on('exit', (code, signal) => {
-    sendToRenderer('engine-event',
-      { event: 'log', level: 'warn',
-        message: `Python sidecar exited (code=${code} signal=${signal})` });
-    py = null;
-  });
-
-  py.on('error', (err) => {
-    sendToRenderer('engine-error',
-      `Failed to spawn Python: ${err.message}. ` +
-      `Set PYTHON env var to your python.exe or install Python 3.9+.`);
+    const moduleMatch = pyStderrTail.match(/ModuleNotFoundError: No module named ['"]([^'"]+)['"]/);
+    if (moduleMatch) {
+      pyLastError =
+        `Python is missing the "${moduleMatch[1]}" module. ` +
+        `Run this in the app folder:    pip install -r python-engine/requirements.txt    ` +
+        `(or double-click install.bat) then restart the app.`;
+      sendToRenderer('engine-error', pyLastError);
+    } else if (code !== 0) {
+      pyLastError =
+        `Python sidecar crashed (code=${code} signal=${signal}). ` +
+        (pyStderrTail
+          ? `Last stderr: ${pyStderrTail.trim().split(/\r?\n/).slice(-3).join(' | ')}`
+          : `No stderr captured.`);
+      sendToRenderer('engine-error', pyLastError);
+    } else {
+      sendToRenderer('engine-event',
+        { event: 'log', level: 'warn',
+          message: `Python sidecar exited cleanly (code=0).` });
+    }
     py = null;
   });
 }
 
 function sendToPython(msg) {
   if (!py || !py.stdin.writable) {
-    sendToRenderer('engine-error', 'Python sidecar is not running.');
+    // Replay the most recent actionable error if we have one — much more
+    // useful than the generic "sidecar is not running".
+    sendToRenderer('engine-error',
+      pyLastError
+        ? `Can't reach Python sidecar. ${pyLastError}`
+        : 'Python sidecar is not running. Check the log for startup errors, ' +
+          'or run install.bat to set up dependencies.');
     return;
   }
   try {

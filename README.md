@@ -43,17 +43,35 @@ You can also drop your own `mapping.json` — same schema as the bundled ones in
 ## Install
 
 ```powershell
-git clone <your-repo-url> midi-player
+git clone https://github.com/StarsationX/midi-player.git
 cd midi-player
+```
+
+Then **double-click `install.bat`** — it checks Node + Python are on PATH, runs `npm install`, and `pip install -r python-engine/requirements.txt`.
+
+Or do it manually:
+
+```powershell
 npm install
 pip install -r python-engine/requirements.txt
 ```
 
 ## Run
 
+Double-click **`start.bat`**, or:
+
 ```powershell
 npm start
 ```
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `Python is missing the "pynput" module` | Run `install.bat` (or `pip install -r python-engine/requirements.txt`) and restart the app. |
+| `Couldn't find Python. Tried: py -3, python, python3` | Install Python 3.10+ from https://python.org and tick **"Add python.exe to PATH"**. Alternatively set the `PYTHON` env var to the full path of your `python.exe`. |
+| `Failed to spawn Python` on macOS / Linux | Set `PYTHON=python3` (or your interpreter's path) in your shell and relaunch. |
+| Keys go to the wrong window | Make sure you re-focus the target window during the 3-second countdown. The status pill turns red when focus is lost. |
 
 Then in the window:
 
