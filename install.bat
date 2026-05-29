@@ -22,22 +22,28 @@ if errorlevel 1 (
 )
 
 REM ---------- Python check ----------
+REM Probe each candidate by actually running --version. `where` alone is not
+REM enough: the `py` launcher can be on PATH but point to an uninstalled
+REM Python via stale registry entries ("Unable to create process using ...").
 set "PY_CMD="
-where py >nul 2>nul && set "PY_CMD=py -3"
+call :probe "py -3"
+if not defined PY_CMD call :probe "py"
+if not defined PY_CMD call :probe "python"
+if not defined PY_CMD call :probe "python3"
 if not defined PY_CMD (
-  where python >nul 2>nul && set "PY_CMD=python"
-)
-if not defined PY_CMD (
-  where python3 >nul 2>nul && set "PY_CMD=python3"
-)
-if not defined PY_CMD (
-  echo [ERROR] Python is not installed or not on PATH.
+  echo [ERROR] Couldn't launch a working Python.
   echo         Install Python 3.10+ from https://python.org
   echo         IMPORTANT: tick "Add python.exe to PATH" during install.
+  echo.
+  echo         If you previously had Python installed and removed it, the
+  echo         "py" launcher may still be pointing at the deleted version.
+  echo         Reinstalling Python (or running "py --list" to see what it
+  echo         can find) will fix that.
   pause
   exit /b 1
 )
 echo Using Python: %PY_CMD%
+%PY_CMD% --version
 echo Using Node:
 node --version
 echo.
@@ -69,3 +75,11 @@ echo ============================================================
 echo Setup complete! Launch the app with start.bat or "npm start".
 echo ============================================================
 pause
+exit /b 0
+
+REM ---------- helper: probe a python command ----------
+:probe
+%~1 --version >nul 2>nul
+if errorlevel 1 exit /b 0
+set "PY_CMD=%~1"
+exit /b 0

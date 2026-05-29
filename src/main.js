@@ -29,12 +29,32 @@ function pythonEnginePath() {
 function pythonCandidates() {
   if (process.env.PYTHON) return [[process.env.PYTHON, []]];
   if (process.platform === 'win32') {
-    return [['py', ['-3']], ['python', []], ['python3', []]];
+    return [['py', ['-3']], ['py', []], ['python', []], ['python3', []]];
   }
   return [['python3', []], ['python', []]];
 }
 
-function startPython() {
+// Run `<exe> [...prefix] --version` and resolve true iff it exits 0.
+// Catches: `py -3` finding a stale registry entry that points at an
+// uninstalled Python ("Unable to create process using ...").
+function probePython(exe, prefixArgs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+    let child;
+    try {
+      child = spawn(exe, [...prefixArgs, '--version'], {
+        stdio: ['ignore', 'ignore', 'ignore'],
+        windowsHide: true,
+      });
+    } catch (_) { finish(false); return; }
+    child.once('error', () => finish(false));
+    child.once('exit', (code) => finish(code === 0));
+    setTimeout(() => { try { child.kill(); } catch (_) {} finish(false); }, 4000);
+  });
+}
+
+async function startPython() {
   if (py) return;
   const enginePath = pythonEnginePath();
   const script = path.join(enginePath, 'ipc_main.py');
@@ -43,33 +63,45 @@ function startPython() {
     return;
   }
 
-  // Try each candidate in order; recurse on spawn error.
-  const tryNext = (list) => {
-    if (!list.length) {
-      const tried = pythonCandidates()
-        .map(([e, a]) => [e, ...a].join(' ')).join(', ');
-      pyLastError =
-        `Couldn't find Python. Tried: ${tried}. ` +
-        `Install Python 3.10+ from https://python.org (check "Add to PATH"), ` +
-        `then restart the app. Or set the PYTHON env var to your python.exe path.`;
-      sendToRenderer('engine-error', pyLastError);
-      return;
+  const candidates = pythonCandidates();
+  let chosen = null;
+  for (const [exe, prefixArgs] of candidates) {
+    if (await probePython(exe, prefixArgs)) {
+      chosen = [exe, prefixArgs];
+      break;
     }
-    const [exe, prefixArgs] = list[0];
-    const child = spawn(exe, [...prefixArgs, '-u', script], {
+  }
+  if (!chosen) {
+    const tried = candidates.map(([e, a]) => [e, ...a].join(' ')).join(', ');
+    pyLastError =
+      `Couldn't launch a working Python. Tried: ${tried}. ` +
+      `Install Python 3.10+ from https://python.org (tick "Add to PATH"), ` +
+      `then restart the app. If you previously had a Python that was ` +
+      `uninstalled, the "py" launcher may be pointing at the removed ` +
+      `version — reinstalling Python fixes that. You can also set the ` +
+      `PYTHON env var to your python.exe path.`;
+    sendToRenderer('engine-error', pyLastError);
+    return;
+  }
+
+  const [exe, prefixArgs] = chosen;
+  let child;
+  try {
+    child = spawn(exe, [...prefixArgs, '-u', script], {
       cwd: enginePath,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
     });
-    let bound = false;
-    child.once('spawn', () => { bound = true; bindPython(child, exe, prefixArgs); });
-    child.once('error', (err) => {
-      if (bound) return;
-      // Try the next candidate.
-      tryNext(list.slice(1));
-    });
-  };
-  tryNext(candidates);
+  } catch (e) {
+    pyLastError = `Failed to spawn ${exe}: ${e.message}`;
+    sendToRenderer('engine-error', pyLastError);
+    return;
+  }
+  child.once('spawn', () => bindPython(child, exe, prefixArgs));
+  child.once('error', (err) => {
+    pyLastError = `Spawned ${exe} but it errored: ${err.message}`;
+    sendToRenderer('engine-error', pyLastError);
+  });
 }
 
 function bindPython(child, exe, prefixArgs) {
