@@ -1,0 +1,42 @@
+# --- Node / Electron ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Electron-builder output
+dist/
+out/
+*.exe
+*.blockmap
+electron-builder.yml.bak
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Project ---
+# Renderer settings are stored in localStorage, but a future dev build
+# could write them to disk. Keep that out.
+*.log
+.cache/

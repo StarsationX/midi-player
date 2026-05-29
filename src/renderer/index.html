@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;" />
+  <title>MIDI Player</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 18V6h2v12H3zm4 0V6h2v12H7zm5 2V4h2v16h-2zm5-2V6h2v12h-2zm5-9V6h-2v3h2zm0 6v-3h-2v3h2z" fill="currentColor"/>
+      </svg>
+      <span>MIDI Player</span>
+    </div>
+    <div class="header-meta" id="header-meta">Idle</div>
+  </header>
+
+  <main class="app-grid">
+
+    <!-- Controls panel -->
+    <section class="panel controls">
+      <h2 class="panel-title">Setup</h2>
+
+      <div class="field">
+        <label>MIDI file</label>
+        <div class="file-row">
+          <input id="midi-path" type="text" readonly placeholder="No file loaded — click Browse"/>
+          <button id="midi-browse" class="btn">Browse…</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Target window</label>
+        <div class="file-row">
+          <select id="target-select"><option value="">— refresh to populate —</option></select>
+          <button id="target-refresh" class="btn">Refresh</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Mapping</label>
+        <div class="file-row">
+          <select id="mapping-select">
+            <option value="roblox">roblox — 36 keys (1…m, no Shift) — most Roblox games</option>
+            <option value="roblox61">roblox61 — 61 keys (C2–C7) with Shift sharps</option>
+            <option value="roblox66">roblox66 — 66 keys with Shift sharps</option>
+            <option value="roblox88">roblox88 — full 88 keys with Shift</option>
+            <option value="roblox88ctrl">roblox88ctrl — 88 keys, Ctrl+1…Ctrl+j for the outer 27 notes</option>
+            <option value="virtualpiano">virtualpiano — 88 keys</option>
+            <option value="virtualpiano66">virtualpiano66 — 66 keys</option>
+          </select>
+          <button id="mapping-browse" class="btn">Custom…</button>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Tempo <span class="muted" id="tempo-label">1.00×</span></label>
+          <input id="tempo" type="range" min="0.25" max="3" step="0.05" value="1"/>
+        </div>
+        <div class="field" style="max-width:140px">
+          <label>Countdown</label>
+          <input id="countdown" type="number" min="0" max="10" value="3"/>
+        </div>
+        <div class="field" style="max-width:160px">
+          <label>&nbsp;</label>
+          <label class="check"><input id="stats" type="checkbox"/> Timing stats</label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Hotkeys</label>
+        <div class="hotkey-row">
+          <span class="muted">Play</span>
+          <input id="hotkey-play" type="text" value="<f6>" />
+          <span class="muted">Stop</span>
+          <input id="hotkey-stop" type="text" value="<f7>" />
+          <span class="muted">Pause</span>
+          <input id="hotkey-pause" type="text" value="<f8>" />
+          <button id="hotkey-apply" class="btn">Apply</button>
+        </div>
+        <div class="muted small" id="hotkey-status">Default hotkeys active.</div>
+      </div>
+
+      <div class="action-row">
+        <button id="play" class="btn btn-primary">▶ Play</button>
+        <button id="pause" class="btn btn-warn" disabled>⏸ Pause</button>
+        <button id="stop" class="btn btn-danger" disabled>■ Stop</button>
+      </div>
+    </section>
+
+    <!-- Visualizer + status -->
+    <section class="panel viz-panel">
+      <div class="viz-header">
+        <h2 class="panel-title">Visualizer</h2>
+        <div class="status-pills">
+          <span class="pill" id="pill-state">Idle</span>
+          <span class="pill" id="pill-time">00:00 / 00:00</span>
+          <span class="pill" id="pill-notes">0 / 0</span>
+          <span class="pill" id="pill-bpm">— BPM</span>
+          <span class="pill pill-focus" id="pill-focus">●</span>
+        </div>
+      </div>
+      <canvas id="viz" class="viz"></canvas>
+      <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+    </section>
+
+    <!-- Log panel -->
+    <section class="panel log-panel">
+      <div class="log-header">
+        <h2 class="panel-title">Log</h2>
+        <button id="log-clear" class="btn btn-ghost">Clear</button>
+      </div>
+      <pre id="log" class="log"></pre>
+    </section>
+
+  </main>
+
+  <div id="drop-overlay" class="drop-overlay">
+    <div class="drop-card">
+      <svg viewBox="0 0 24 24" class="drop-icon" aria-hidden="true">
+        <path d="M19 13v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6h2v6h10v-6h2zm-6-9 5 5h-3v6h-4V9H8l5-5z"
+              fill="currentColor"/>
+      </svg>
+      <div class="drop-title">Drop to load</div>
+      <div class="drop-sub">.mid / .midi → MIDI file · .json → custom mapping</div>
+    </div>
+  </div>
+
+  <script src="visualizer.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
