@@ -14,12 +14,26 @@
         <path d="M3 18V6h2v12H3zm4 0V6h2v12H7zm5 2V4h2v16h-2zm5-2V6h2v12h-2zm5-9V6h-2v3h2zm0 6v-3h-2v3h2z" fill="currentColor"/>
       </svg>
       <span class="brand-name">MIDI Player</span>
+      <button class="version-badge" id="version-badge" title="Check for updates">v—</button>
     </div>
     <div class="header-status" id="header-status">
       <span class="status-dot"></span>
       <span class="status-text" id="status-text">Idle</span>
     </div>
   </header>
+
+  <div class="update-banner" id="update-banner">
+    <div class="update-icon">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-2h14v2H5z" fill="currentColor"/></svg>
+    </div>
+    <div class="update-text">
+      <div class="update-title" id="update-title">Update available</div>
+      <div class="update-sub" id="update-sub"></div>
+    </div>
+    <div class="update-progress" id="update-progress"><div class="update-progress-bar" id="update-progress-bar"></div></div>
+    <button class="btn btn-update" id="update-apply">Update &amp; restart</button>
+    <button class="btn btn-ghost" id="update-dismiss" title="Dismiss">✕</button>
+  </div>
 
   <main class="app-grid">
 

@@ -1,6 +1,6 @@
 {
   "name": "midi-player-app",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Plays MIDI files into any Windows app via simulated keypresses, with a real-time piano-roll visualizer.",
   "main": "src/main.js",
   "scripts": {

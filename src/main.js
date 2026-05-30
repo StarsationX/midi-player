@@ -5,6 +5,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const updater = require('./updater');
 
 let mainWindow = null;
 let py = null;            // Python child process
@@ -263,6 +264,12 @@ ipcMain.handle('dialog:openMapping', async () => {
 });
 
 ipcMain.handle('app:openExternal', (_evt, url) => shell.openExternal(url));
+ipcMain.handle('app:version', () => app.getVersion());
+
+// --- updater ---
+function sendUpdate(payload) { sendToRenderer('update-status', payload); }
+ipcMain.handle('update:check', (_evt, opts) => updater.checkForUpdates(sendUpdate, opts || {}));
+ipcMain.handle('update:apply', () => updater.applyUpdate(sendUpdate));
 
 // ---------------------------------------------------------------------------
 // Window
@@ -294,6 +301,10 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   startPython();
+  // Quietly check for updates a few seconds after launch (packaged only).
+  if (app.isPackaged) {
+    setTimeout(() => updater.checkForUpdates(sendUpdate, { manual: false }), 4000);
+  }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

@@ -27,4 +27,14 @@ contextBridge.exposeInMainWorld('api', {
   getDroppedFilePath: (file) => webUtils.getPathForFile(file),
 
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+
+  // updater
+  getVersion: () => ipcRenderer.invoke('app:version'),
+  checkForUpdates: (opts) => ipcRenderer.invoke('update:check', opts),
+  applyUpdate: () => ipcRenderer.invoke('update:apply'),
+  onUpdateStatus: (handler) => {
+    const fn = (_e, payload) => handler(payload);
+    ipcRenderer.on('update-status', fn);
+    return () => ipcRenderer.off('update-status', fn);
+  },
 });

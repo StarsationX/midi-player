@@ -53,6 +53,15 @@ const els = {
   logHeader: $('log-header'),
   log: $('log'),
   logClear: $('log-clear'),
+  // updater
+  versionBadge: $('version-badge'),
+  updateBanner: $('update-banner'),
+  updateTitle: $('update-title'),
+  updateSub: $('update-sub'),
+  updateProgress: $('update-progress'),
+  updateProgressBar: $('update-progress-bar'),
+  updateApply: $('update-apply'),
+  updateDismiss: $('update-dismiss'),
 };
 
 const SETTINGS_KEY = 'midi-player.settings.v3';
@@ -766,6 +775,74 @@ requestAnimationFrame(frame);
 // --------------------------------------------------------------------------
 // Boot
 // --------------------------------------------------------------------------
+// --------------------------------------------------------------------------
+// Updater
+// --------------------------------------------------------------------------
+(async function initUpdater() {
+  let version = '?';
+  try { version = await window.api.getVersion(); } catch (_) {}
+  els.versionBadge.textContent = `v${version}`;
+
+  els.versionBadge.addEventListener('click', () => {
+    els.versionBadge.classList.add('checking');
+    els.versionBadge.textContent = 'checking…';
+    window.api.checkForUpdates({ manual: true });
+  });
+  els.updateDismiss.addEventListener('click', () => {
+    els.updateBanner.classList.remove('show');
+  });
+  els.updateApply.addEventListener('click', () => {
+    els.updateApply.disabled = true;
+    els.updateApply.textContent = 'Downloading…';
+    window.api.applyUpdate();
+  });
+
+  window.api.onUpdateStatus((s) => {
+    switch (s.state) {
+      case 'checking':
+        els.versionBadge.classList.add('checking');
+        els.versionBadge.textContent = 'checking…';
+        break;
+      case 'available':
+        els.versionBadge.classList.remove('checking');
+        els.versionBadge.classList.add('update');
+        els.versionBadge.textContent = `v${version} → v${s.version}`;
+        els.updateTitle.textContent = `Update available — v${s.version}`;
+        els.updateSub.textContent = s.canSelfUpdate
+          ? `You have v${s.current}. Download is ~${Math.round((s.size||0)/1048576)} MB.`
+          : `You have v${s.current}. Click to open the download page.`;
+        els.updateApply.textContent = s.canSelfUpdate ? 'Update & restart' : 'Open download';
+        els.updateApply.disabled = false;
+        els.updateProgress.classList.remove('show');
+        els.updateBanner.classList.add('show');
+        log('info', `Update available: v${s.version} (you have v${s.current}).`);
+        break;
+      case 'none':
+        els.versionBadge.classList.remove('checking');
+        els.versionBadge.textContent = `v${version} ✓`;
+        setTimeout(() => { els.versionBadge.textContent = `v${version}`; }, 2500);
+        log('info', `You're on the latest version (v${s.current}).`);
+        break;
+      case 'downloading':
+        els.updateProgress.classList.add('show');
+        els.updateProgressBar.style.width = `${s.percent || 0}%`;
+        els.updateApply.textContent = `Downloading ${s.percent || 0}%`;
+        break;
+      case 'ready':
+        els.updateApply.textContent = 'Restarting…';
+        log('info', 'Update downloaded — restarting to apply.');
+        break;
+      case 'error':
+        els.versionBadge.classList.remove('checking');
+        els.versionBadge.textContent = `v${version}`;
+        els.updateApply.disabled = false;
+        els.updateApply.textContent = 'Retry';
+        log('error', `Update check failed: ${s.message}`);
+        break;
+    }
+  });
+})();
+
 initAccordion();
 applySettingsToUI();
 log('info', 'Booting…');
